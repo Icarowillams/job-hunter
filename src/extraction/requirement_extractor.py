@@ -96,6 +96,8 @@ class RequirementExtractor:
         if not description.strip():
             return []
 
+        description = self._normalize_text(description)
+
         requirements: List[JobRequirement] = []
 
         for skill in self._find_skills(description):
@@ -116,6 +118,19 @@ class RequirementExtractor:
             )
 
         return self._deduplicate(requirements)
+
+    @staticmethod
+    def _normalize_text(text: str) -> str:
+        """
+        Normalize text used by the rule-based extractor.
+
+        This keeps the original characters but normalizes Unicode
+        representation so accented Portuguese text can be matched
+        consistently.
+        """
+        import unicodedata
+
+        return unicodedata.normalize("NFC", text)
 
     def _find_skills(self, description: str) -> List[str]:
         """
