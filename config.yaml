@@ -1,0 +1,67 @@
+﻿scoring:
+  weights:
+    role_fit: 0.20
+    seniority_fit: 0.15
+    technical_fit: 0.40
+    experience_fit: 0.15
+    semantic_fit: 0.10
+
+thresholds:
+  priority_comp: 80
+  priority_fresh: 70
+  review_comp: 60
+  review_fresh: 50
+
+mode: lightweight
+source: serpapi
+
+serpapi:
+  api_key: ${SERPAPI_API_KEY}
+  query_params:
+    location: "São Paulo, SP"
+    query: "estágio desenvolvimento python"
+    limit: 20
+
+notification:
+  enabled: true
+  minimum_score: 70
+  channel: telegram
+  retry:
+    enabled: true
+    max_attempts: 3
+    delay_seconds: 2
+    backoff_multiplier: 2
+    workers: 2
+
+telegram:
+  enabled: true
+  bot_token: ${TELEGRAM_BOT_TOKEN}
+  chat_id: ${TELEGRAM_CHAT_ID}
+  timeout: 10
+
+embedding:
+  model: "paraphrase-multilingual-MiniLM-L12-v2"
+
+paths:
+  profile: "data/profile.json"
+  skill_dictionary: "data/skill_dictionary.json"
+  db: "data/job_hunter.db"
+  logs: "logs"
+
+logging:
+  level: "INFO"
+  format: "json"
+
+scheduler:
+  enabled: true
+  check_interval_seconds: 30
+  execution_timeout_seconds: 300
+  graceful_shutdown_timeout_seconds: 30
+
+shutdown:
+  enabled: true
+  timeout_seconds: 30
+
+metrics:
+  enabled: true
+  persist: true
