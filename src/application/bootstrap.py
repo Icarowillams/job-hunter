@@ -10,6 +10,7 @@ from src.application.orchestrator import ApplicationRunner
 from src.extraction.requirement_extractor import RequirementExtractor
 from src.infrastructure.candidate_profile_repository import CandidateProfileRepository
 from src.infrastructure.database import Database
+from src.infrastructure.job_analysis_repository import JobAnalysisRepository
 from src.infrastructure.metric_repository import MetricRepository
 from src.infrastructure.profile_loader import ProfileLoader
 from src.ingestion.collectors.serpapi_job_collector import SerpApiJobCollector
@@ -103,8 +104,10 @@ def build_application(
     profile_repository.save(profile)
 
     analyzer = JobAnalyzer()
+    analysis_repository = JobAnalysisRepository(database)
     pipeline = AnalysisPipeline(
         analyzer=analyzer,
+        analysis_repository=analysis_repository,
     )
 
     extractor = RequirementExtractor()

@@ -275,3 +275,43 @@ serpapi:
 
     assert isinstance(runner.collector, SerpApiJobCollector)
     assert runner.collector.api_key == "dotenv-test-key"
+
+
+def test_build_application_injects_job_analysis_repository(
+    tmp_path,
+):
+    config_path = tmp_path / "config.yaml"
+    profile_path = tmp_path / "profile.json"
+
+    config_path.write_text(
+        """
+paths:
+  profile: "profile.json"
+  db: "job_hunter.db"
+
+notification:
+  enabled: false
+
+serpapi:
+  api_key: ""
+  query_params:
+    location: "Recife, PE"
+    query: "estagio python"
+    limit: 20
+""",
+        encoding="utf-8",
+    )
+
+    profile_path.write_text(
+        '{"id": "test-profile", "skills": ["Python"]}',
+        encoding="utf-8",
+    )
+
+    runner = build_application(
+        config_path=config_path,
+        profile_path=profile_path,
+        db_path=tmp_path / "job_hunter.db",
+    )
+
+    assert runner.pipeline.analysis_repository is not None
+    assert runner.pipeline.analysis_repository.database is runner.job_repository
