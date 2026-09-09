@@ -1,6 +1,8 @@
-﻿from pathlib import Path
+import os
+from pathlib import Path
 
 import yaml
+from dotenv import load_dotenv
 
 from src.analysis.job_analyzer import JobAnalyzer
 from src.application.metrics.metrics_service import MetricsService
@@ -8,8 +10,10 @@ from src.application.orchestrator import ApplicationRunner
 from src.extraction.requirement_extractor import RequirementExtractor
 from src.infrastructure.candidate_profile_repository import CandidateProfileRepository
 from src.infrastructure.database import Database
+from src.infrastructure.job_analysis_repository import JobAnalysisRepository
 from src.infrastructure.metric_repository import MetricRepository
 from src.infrastructure.profile_loader import ProfileLoader
+from src.ingestion.collectors.serpapi_job_collector import SerpApiJobCollector
 from src.pipeline.analysis_pipeline import AnalysisPipeline
 
 
@@ -24,8 +28,44 @@ def _load_config(config_path: Path) -> dict:
             f"Configuration file not found: {config_path}"
         )
 
+    env_path = config_path.parent / ".env"
+    load_dotenv(dotenv_path=env_path)
+
     with config_path.open("r", encoding="utf-8") as file:
         return yaml.safe_load(file) or {}
+
+
+def _resolve_env_value(value):
+    if not isinstance(value, str):
+        return value
+
+    if value.startswith("${") and value.endswith("}"):
+        env_name = value[2:-1]
+        return os.getenv(env_name, "")
+
+    return value
+
+
+def _build_serpapi_collector(config: dict):
+    serpapi_config = config.get("serpapi", {})
+    query_params = serpapi_config.get("query_params", {})
+
+    api_key = _resolve_env_value(
+        serpapi_config.get("api_key", "")
+    )
+    query = query_params.get("query", "")
+    location = query_params.get("location")
+    limit = int(query_params.get("limit", 20))
+
+    if not api_key:
+        return NullJobCollector()
+
+    return SerpApiJobCollector(
+        api_key=api_key,
+        query=query,
+        location=location,
+        limit=limit,
+    )
 
 
 def build_application(
@@ -64,14 +104,16 @@ def build_application(
     profile_repository.save(profile)
 
     analyzer = JobAnalyzer()
+    analysis_repository = JobAnalysisRepository(database)
     pipeline = AnalysisPipeline(
         analyzer=analyzer,
+        analysis_repository=analysis_repository,
     )
 
     extractor = RequirementExtractor()
 
     if collector is None:
-        collector = NullJobCollector()
+        collector = _build_serpapi_collector(config)
 
     notification_enabled = notification_config.get("enabled", False)
 
