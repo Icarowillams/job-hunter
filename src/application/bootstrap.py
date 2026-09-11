@@ -1,4 +1,4 @@
-import os
+﻿import os
 from pathlib import Path
 
 import yaml
@@ -11,7 +11,12 @@ from src.extraction.requirement_extractor import RequirementExtractor
 from src.infrastructure.candidate_profile_repository import CandidateProfileRepository
 from src.infrastructure.database import Database
 from src.infrastructure.job_analysis_repository import JobAnalysisRepository
+from src.infrastructure.job_repository import JobRepository
+from src.infrastructure.job_requirement_repository import JobRequirementRepository
 from src.infrastructure.metric_repository import MetricRepository
+from src.infrastructure.pipeline_execution_repository import (
+    PipelineExecutionRepository,
+)
 from src.infrastructure.profile_loader import ProfileLoader
 from src.ingestion.collectors.fallback_job_collector import FallbackJobCollector
 from src.ingestion.collectors.serpapi_google_search_collector import (
@@ -119,8 +124,13 @@ def build_application(
     profile_repository = CandidateProfileRepository(database)
     profile_repository.save(profile)
 
-    analyzer = JobAnalyzer()
+    job_repository = JobRepository(database)
+    requirement_repository = JobRequirementRepository(database)
     analysis_repository = JobAnalysisRepository(database)
+    execution_repository = PipelineExecutionRepository(database)
+
+    analyzer = JobAnalyzer()
+
     pipeline = AnalysisPipeline(
         analyzer=analyzer,
         analysis_repository=analysis_repository,
@@ -153,10 +163,11 @@ def build_application(
         collector=collector,
         profile=profile,
         pipeline=pipeline,
-        job_repository=database,
-        requirement_repository=database,
+        job_repository=job_repository,
+        requirement_repository=requirement_repository,
         extractor=extractor,
         notifier=notifier,
         score_threshold=score_threshold,
         metrics_service=metrics_service,
+        execution_repository=execution_repository,
     )

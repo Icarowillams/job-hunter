@@ -321,7 +321,9 @@ serpapi:
     )
 
     assert runner.pipeline.analysis_repository is not None
-    assert runner.pipeline.analysis_repository.database is runner.job_repository
+    assert runner.pipeline.analysis_repository.database is runner.job_repository.database
+
+
 def test_build_application_composes_serpapi_fallback_collectors(
     tmp_path,
     monkeypatch,
