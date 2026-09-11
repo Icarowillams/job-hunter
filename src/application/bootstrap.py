@@ -13,6 +13,10 @@ from src.infrastructure.database import Database
 from src.infrastructure.job_analysis_repository import JobAnalysisRepository
 from src.infrastructure.metric_repository import MetricRepository
 from src.infrastructure.profile_loader import ProfileLoader
+from src.ingestion.collectors.fallback_job_collector import FallbackJobCollector
+from src.ingestion.collectors.serpapi_google_search_collector import (
+    SerpApiGoogleSearchCollector,
+)
 from src.ingestion.collectors.serpapi_job_collector import SerpApiJobCollector
 from src.pipeline.analysis_pipeline import AnalysisPipeline
 
@@ -60,11 +64,23 @@ def _build_serpapi_collector(config: dict):
     if not api_key:
         return NullJobCollector()
 
-    return SerpApiJobCollector(
+    primary = SerpApiJobCollector(
         api_key=api_key,
         query=query,
         location=location,
         limit=limit,
+    )
+
+    fallback = SerpApiGoogleSearchCollector(
+        api_key=api_key,
+        query=query,
+        location=location,
+        limit=limit,
+    )
+
+    return FallbackJobCollector(
+        primary=primary,
+        fallback=fallback,
     )
 
 
