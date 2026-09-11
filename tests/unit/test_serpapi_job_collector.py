@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 
 import pytest
 
@@ -105,7 +105,7 @@ def test_sends_expected_serpapi_parameters():
     assert call["params"]["engine"] == "google_jobs"
     assert call["params"]["q"] == "estágio python"
     assert call["params"]["location"] == "São Paulo, SP"
-    assert call["params"]["num"] == 10
+    assert "num" not in call["params"]
 
 
 def test_returns_empty_list_when_serpapi_returns_no_jobs():
@@ -215,3 +215,423 @@ def test_preserves_original_result_in_metadata():
     assert job.metadata["raw_result"] == result
     assert job.metadata["via"] == "LinkedIn"
     assert job.metadata["schedule_type"] == "Full-time"
+
+
+def test_paginates_until_requested_limit():
+    first_response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": f"job{i}",
+                    "title": f"Python Developer {i}",
+                    "company_name": "Empresa",
+                    "description": "Python developer.",
+                }
+                for i in range(10)
+            ],
+            "serpapi_pagination": {
+                "next_page_token": "next-token-123",
+            },
+        }
+    )
+
+    second_response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": f"job{i}",
+                    "title": f"Python Developer {i}",
+                    "company_name": "Empresa",
+                    "description": "Python developer.",
+                }
+                for i in range(10, 20)
+            ]
+        }
+    )
+
+    class PaginatedHttpClient:
+        def __init__(self):
+            self.calls = []
+            self.responses = [first_response, second_response]
+
+        def get(self, url, params=None, timeout=None):
+            self.calls.append(
+                {
+                    "url": url,
+                    "params": dict(params),
+                    "timeout": timeout,
+                }
+            )
+            return self.responses.pop(0)
+
+    client = PaginatedHttpClient()
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python",
+        location="S?o Paulo, SP",
+        limit=20,
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 20
+    assert len(client.calls) == 2
+    assert "next_page_token" not in client.calls[0]["params"]
+    assert client.calls[1]["params"]["next_page_token"] == "next-token-123"
+
+
+def test_pagination_respects_requested_limit():
+    first_response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": f"job{i}",
+                    "title": f"Python Developer {i}",
+                    "company_name": "Empresa",
+                    "description": "Python developer.",
+                }
+                for i in range(10)
+            ],
+            "serpapi_pagination": {
+                "next_page_token": "next-token-123",
+            },
+        }
+    )
+
+    second_response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": f"job{i}",
+                    "title": f"Python Developer {i}",
+                    "company_name": "Empresa",
+                    "description": "Python developer.",
+                }
+                for i in range(10, 20)
+            ],
+            "serpapi_pagination": {
+                "next_page_token": "should-not-be-used",
+            },
+        }
+    )
+
+    class PaginatedHttpClient:
+        def __init__(self):
+            self.calls = []
+            self.responses = [first_response, second_response]
+
+        def get(self, url, params=None, timeout=None):
+            self.calls.append(
+                {
+                    "url": url,
+                    "params": dict(params),
+                    "timeout": timeout,
+                }
+            )
+            return self.responses.pop(0)
+
+    client = PaginatedHttpClient()
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python",
+        location="S?o Paulo, SP",
+        limit=15,
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 15
+    assert len(client.calls) == 2
+
+
+def test_sends_location_in_serpapi_canonical_format():
+    response = FakeResponse({"jobs_results": []})
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="est?gio python",
+        location="Recife,State of Pernambuco,Brazil",
+        limit=10,
+        http_client=client,
+    )
+
+    collector.fetch_jobs()
+
+    call = client.calls[0]
+
+    assert call["params"]["location"] == (
+        "Recife,State of Pernambuco,Brazil"
+    )
+
+def test_parses_relative_published_at():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": "abc123",
+                    "title": "Python Developer",
+                    "company_name": "Empresa",
+                    "description": "Python developer.",
+                    "detected_extensions": {
+                        "posted_at": "2 days ago",
+                    },
+                }
+            ]
+        }
+    )
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python",
+        location="S?o Paulo, SP",
+        http_client=FakeHttpClient(response),
+    )
+
+    job = collector.fetch_jobs()[0]
+
+    assert job.published_at is not None
+    assert job.original_published_at is not None
+    assert job.published_at.tzinfo is not None
+
+def test_accepts_job_title_as_title_fallback():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_title": "Python Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento com Python.",
+                }
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python jobs",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "Python Developer"
+
+
+def test_accepts_company_as_company_name_fallback():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "title": "Python Developer",
+                    "company": "Empresa Exemplo",
+                    "description": "Desenvolvimento com Python.",
+                }
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python jobs",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].company == "Empresa Exemplo"
+
+
+def test_allows_missing_description():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "title": "Python Developer",
+                    "company_name": "Empresa Exemplo",
+                }
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python jobs",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].description == ""
+
+
+def test_uses_related_link_when_share_link_is_missing():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "title": "Python Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento com Python.",
+                    "related_links": [
+                        {
+                            "link": "https://example.com/python-job"
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python jobs",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].url == "https://example.com/python-job"
+
+
+def test_infers_internship_seniority_from_title():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "title": "Est?gio em Desenvolvimento Python",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento com Python.",
+                }
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python est?gio",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].seniority == "internship"
+
+
+def test_detects_remote_from_extensions():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "title": "Python Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento com Python.",
+                    "extensions": ["Remote", "Full-time"],
+                }
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python jobs",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].work_mode == "remote"
+
+
+def test_preserves_extended_metadata():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "title": "Python Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento com Python.",
+                    "salary": "R$ 4.000",
+                    "job_highlights": ["Python", "APIs"],
+                    "related_links": [
+                        {"link": "https://example.com/job"}
+                    ],
+                }
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python jobs",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].metadata["salary"] == "R$ 4.000"
+    assert jobs[0].metadata["job_highlights"] == ["Python", "APIs"]
+    assert jobs[0].metadata["related_links"][0]["link"] == (
+        "https://example.com/job"
+    )
+
+
+def test_normalized_hash_includes_location():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "title": "Python Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento com Python.",
+                    "location": "Recife, PE",
+                }
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="python jobs",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+
+    expected = collector._generate_normalized_hash(
+        title="Python Developer",
+        company="Empresa Exemplo",
+        description="Desenvolvimento com Python.",
+        location="Recife, PE",
+    )
+
+    assert jobs[0].normalized_hash == expected
