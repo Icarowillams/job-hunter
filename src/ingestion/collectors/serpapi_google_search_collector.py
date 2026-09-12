@@ -151,6 +151,14 @@ class SerpApiGoogleSearchCollector(JobCollector):
         if not title or not url or not description or not company:
             return None
 
+        if not self._is_qualifying_organic_result(
+            title=title,
+            url=url,
+            description=description,
+            company=company,
+        ):
+            return None
+
         return self._build_job(
             result=result,
             title=title,
@@ -160,6 +168,82 @@ class SerpApiGoogleSearchCollector(JobCollector):
             url=url,
             stable_key=f"serpapi_google:{url}",
         )
+
+    @staticmethod
+    def _is_qualifying_organic_result(
+        *,
+        title: str,
+        url: str,
+        description: str,
+        company: str,
+    ) -> bool:
+        from urllib.parse import urlparse
+
+        parsed_url = urlparse(url)
+        hostname = (parsed_url.hostname or "").lower()
+        path = (parsed_url.path or "").lower()
+
+        searchable_text = " ".join(
+            [
+                title.lower(),
+                description.lower(),
+                company.lower(),
+            ]
+        )
+
+        # Reddit normalmente retorna discuss?es, n?o vagas individuais.
+        if "reddit." in hostname:
+            return False
+
+        # LinkedIn: aceitar apenas uma p?gina individual de vaga.
+        if "linkedin." in hostname:
+            return (
+                "/jobs/view/" in path
+                and "/jobs/search" not in path
+            )
+
+        # Indeed: bloquear p?ginas de pesquisa/listagem.
+        if "indeed." in hostname:
+            return (
+                "/viewjob" in path
+                or "/rc/clk" in path
+            ) and not any(
+                listing_path in path
+                for listing_path in (
+                    "/q-",
+                    "/jobs",
+                    "/vagas",
+                    "/empregos",
+                )
+            )
+
+        # Glassdoor: aceitar somente p?ginas individuais.
+        if "glassdoor." in hostname:
+            return (
+                "/job-listing/" in path
+                or (
+                    "/vaga/" in path
+                    and "srch_" not in path
+                    and "_ko" not in path
+                )
+            )
+
+        # Bloquear conte?dos evidentemente n?o relacionados a vagas.
+        non_job_phrases = (
+            "tutorial",
+            "como aprender",
+            "aprenda python",
+            "discuss?o",
+            "discussao",
+            "f?rum",
+            "forum",
+        )
+
+        if any(phrase in searchable_text for phrase in non_job_phrases):
+            return False
+
+        # Para dom?nios desconhecidos, manter o comportamento permissivo.
+        return True
 
     def _build_job(
         self,

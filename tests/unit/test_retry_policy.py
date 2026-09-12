@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.application.retry.retry_policy import RetryPolicy
+from src.application.retry.retry_policy import RetryPolicy, RetryExhaustedError
 
 
 def test_retry_succeeds_on_first_attempt():
@@ -134,3 +134,48 @@ def test_retry_validates_backoff_multiplier():
             delay_seconds=0,
             backoff_multiplier=0,
         )
+
+def test_retry_policy_reports_attempt_count():
+    attempts = {"count": 0}
+
+    def operation():
+        attempts["count"] += 1
+
+        if attempts["count"] < 3:
+            raise RuntimeError("temporary failure")
+
+        return "success"
+
+    policy = RetryPolicy(
+        max_attempts=3,
+        delay_seconds=0,
+        backoff_multiplier=1,
+    )
+
+    result = policy.execute_with_attempts(operation)
+
+    assert result.value == "success"
+    assert result.attempts == 3
+
+def test_retry_policy_reports_attempt_count_when_all_attempts_fail():
+    attempts = {"count": 0}
+
+    def operation():
+        attempts["count"] += 1
+        raise RuntimeError("permanent failure")
+
+    policy = RetryPolicy(
+        max_attempts=3,
+        delay_seconds=0,
+        backoff_multiplier=1,
+    )
+
+    with pytest.raises(RetryExhaustedError) as exc_info:
+        policy.execute_with_attempts(operation)
+
+    error = exc_info.value
+
+    assert attempts["count"] == 3
+    assert error.attempts == 3
+    assert isinstance(error.original_exception, RuntimeError)
+    assert str(error.original_exception) == "permanent failure"

@@ -10,6 +10,7 @@ from src.application.orchestrator import ApplicationRunner
 from src.extraction.requirement_extractor import RequirementExtractor
 from src.infrastructure.candidate_profile_repository import CandidateProfileRepository
 from src.infrastructure.database import Database
+from src.infrastructure.email_notifier import EmailNotifier
 from src.infrastructure.job_analysis_repository import JobAnalysisRepository
 from src.infrastructure.job_repository import JobRepository
 from src.infrastructure.job_requirement_repository import JobRequirementRepository
@@ -24,6 +25,9 @@ from src.ingestion.collectors.serpapi_google_search_collector import (
 )
 from src.ingestion.collectors.serpapi_job_collector import SerpApiJobCollector
 from src.pipeline.analysis_pipeline import AnalysisPipeline
+from src.infrastructure.smtp_client import SMTPClient
+from src.infrastructure.notification_repository import NotificationRepository
+from src.application.retry.retry_policy import RetryPolicy
 
 
 class NullJobCollector:
@@ -89,6 +93,65 @@ def _build_serpapi_collector(config: dict):
     )
 
 
+def _build_email_notifier(
+    config: dict,
+    database: Database,
+):
+    email_config = config.get("email", {})
+    retry_config = config.get("notification", {}).get("retry", {})
+
+    smtp_server = _resolve_env_value(
+        email_config.get("smtp_server", "")
+    )
+    smtp_port = int(
+        email_config.get("smtp_port", 587)
+    )
+    username = _resolve_env_value(
+        email_config.get("username", "")
+    )
+    password = _resolve_env_value(
+        email_config.get("password", "")
+    )
+    sender = _resolve_env_value(
+        email_config.get("from", username)
+    )
+    recipient = _resolve_env_value(
+        email_config.get("to", username)
+    )
+
+    smtp_client = SMTPClient(
+        host=smtp_server,
+        port=smtp_port,
+        username=username,
+        password=password,
+    )
+
+    retry_policy = None
+
+    if retry_config.get("enabled", False):
+        retry_policy = RetryPolicy(
+            max_attempts=int(
+                retry_config.get("max_attempts", 3)
+            ),
+            delay_seconds=float(
+                retry_config.get("delay_seconds", 2)
+            ),
+            backoff_multiplier=float(
+                retry_config.get("backoff_multiplier", 2)
+            ),
+        )
+
+    notification_repository = NotificationRepository(database)
+
+    return EmailNotifier(
+        smtp_client=smtp_client,
+        sender=sender,
+        recipient=recipient,
+        retry_policy=retry_policy,
+        notification_repository=notification_repository,
+    )
+
+
 def build_application(
     config_path: str | Path = "config.yaml",
     profile_path: str | Path | None = None,
@@ -145,6 +208,16 @@ def build_application(
 
     if not notification_enabled:
         notifier = None
+    elif notifier is None:
+        channel = notification_config.get("channel", "email")
+
+        if channel == "email":
+            notifier = _build_email_notifier(
+                config=config,
+                database=database,
+            )
+        else:
+            notifier = None
 
     score_threshold = int(
         notification_config.get(

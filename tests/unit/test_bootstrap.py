@@ -425,3 +425,61 @@ serpapi:
         "Recife,State of Pernambuco,Brazil"
     )
     assert collector.fallback.limit == 15
+from pathlib import Path
+
+from src.application.bootstrap import build_application
+from src.infrastructure.email_notifier import EmailNotifier
+
+
+def test_build_application_creates_email_notifier_from_config(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.yaml"
+
+    config_path.write_text(
+        """
+notification:
+  enabled: true
+  channel: email
+  minimum_score: 70
+  retry:
+    enabled: true
+    max_attempts: 3
+    delay_seconds: 0
+    backoff_multiplier: 1
+
+email:
+  smtp_server: smtp.example.com
+  smtp_port: 587
+  username: ${EMAIL_USERNAME}
+  password: ${EMAIL_PASSWORD}
+  from: hunter@example.com
+  to: user@example.com
+
+paths:
+  profile: data/profile.json
+  db: data/job_hunter.db
+
+metrics:
+  enabled: false
+""",
+        encoding="utf-8",
+    )
+
+    profile_path = tmp_path / "profile.json"
+    profile_path.write_text(
+        '{"id": "test-profile"}',
+        encoding="utf-8",
+    )
+
+    monkeypatch.setenv("EMAIL_USERNAME", "hunter@example.com")
+    monkeypatch.setenv("EMAIL_PASSWORD", "test-password")
+
+    runner = build_application(
+        config_path=config_path,
+        profile_path=profile_path,
+        db_path=tmp_path / "test.db",
+        collector=object(),
+    )
+
+    assert isinstance(runner.notifier, EmailNotifier)
+    assert runner.notifier.sender == "hunter@example.com"
+    assert runner.notifier.recipient == "user@example.com"

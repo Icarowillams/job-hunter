@@ -18,20 +18,28 @@ source: serpapi
 serpapi:
   api_key: ${SERPAPI_API_KEY}
   query_params:
-    location: "São Paulo, SP"
+    location: "Sao Paulo"
     query: "estágio desenvolvimento python"
     limit: 20
 
 notification:
   enabled: true
   minimum_score: 70
-  channel: telegram
+  channel: email
   retry:
     enabled: true
     max_attempts: 3
     delay_seconds: 2
     backoff_multiplier: 2
     workers: 2
+
+email:
+  smtp_server: ${EMAIL_SMTP_SERVER}
+  smtp_port: 587
+  username: ${EMAIL_USERNAME}
+  password: ${EMAIL_PASSWORD}
+  from: ${EMAIL_FROM}
+  to: ${EMAIL_TO}
 
 telegram:
   enabled: true

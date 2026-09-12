@@ -198,3 +198,80 @@ def test_application_runner_persists_complete_flow(tmp_path):
 
     assert len(notifier.calls) == 1
     assert notifier.calls[0]["job"].id == job.id
+
+def test_application_runner_is_idempotent_for_repeated_requirement_extraction(tmp_path):
+    database = build_database(tmp_path)
+
+    job_repository = JobRepository(database)
+    requirement_repository = JobRequirementRepository(database)
+    analysis_repository = JobAnalysisRepository(database)
+
+    job = build_job()
+
+    first_requirement = JobRequirement(
+        id="req-1",
+        job_id=job.id,
+        name="Python",
+        category="skill",
+        mandatory=True,
+        extraction_confidence=0.80,
+    )
+
+    second_requirement = JobRequirement(
+        id="req-2",
+        job_id=job.id,
+        name="Python",
+        category="skill",
+        mandatory=True,
+        extraction_confidence=0.95,
+    )
+
+    analysis = build_analysis()
+    profile = build_profile()
+
+    collector = FakeCollector([job])
+
+    class RepeatedExtractor:
+        def __init__(self):
+            self.calls = 0
+
+        def extract(self, job_id, description):
+            self.calls += 1
+            return [first_requirement] if self.calls == 1 else [second_requirement]
+
+    extractor = RepeatedExtractor()
+
+    analyzer = FakeAnalyzer(analysis)
+
+    pipeline = AnalysisPipeline(
+        analyzer=analyzer,
+        analysis_repository=analysis_repository,
+    )
+
+    runner = ApplicationRunner(
+        collector=collector,
+        profile=profile,
+        pipeline=pipeline,
+        job_repository=job_repository,
+        requirement_repository=requirement_repository,
+        extractor=extractor,
+        notifier=None,
+        score_threshold=70,
+    )
+
+    first_result = runner.run_once()
+    second_result = runner.run_once()
+
+    assert first_result.succeeded == 1
+    assert second_result.succeeded == 1
+
+    persisted_requirements = requirement_repository.get_by_job_id(job.id)
+
+    assert len(persisted_requirements) == 1
+
+    persisted = persisted_requirements[0]
+
+    assert persisted.name == "Python"
+    assert persisted.category == "skill"
+    assert persisted.mandatory is True
+    assert persisted.extraction_confidence == 0.95

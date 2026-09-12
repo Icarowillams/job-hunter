@@ -18,6 +18,7 @@ class NotificationStatus(str, Enum):
 class NotificationChannel(str, Enum):
     CONSOLE = "console"
     TELEGRAM = "telegram"
+    EMAIL = "email"
 
 
 class MatchStatus(str, Enum):

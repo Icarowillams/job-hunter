@@ -137,3 +137,92 @@ def test_deleting_job_cascades_to_requirements(repository, job):
         conn.execute("DELETE FROM job WHERE id = ?", (job.id,))
 
     assert repository.get_by_id(requirement.id) is None
+def test_save_same_requirement_with_different_ids_is_idempotent(repository, job):
+    first = JobRequirement(
+        id="req-1",
+        job_id=job.id,
+        name="Python",
+        category="technical",
+        mandatory=False,
+        extraction_confidence=0.80,
+    )
+
+    second = JobRequirement(
+        id="req-2",
+        job_id=job.id,
+        name="Python",
+        category="technical",
+        mandatory=False,
+        extraction_confidence=0.85,
+    )
+
+    repository.save(first)
+    repository.save(second)
+
+    result = repository.get_by_job_id(job.id)
+
+    assert len(result) == 1
+    assert result[0].name == "Python"
+    assert result[0].category == "technical"
+
+
+def test_save_same_requirement_prefers_mandatory_version(repository, job):
+    optional = JobRequirement(
+        id="req-1",
+        job_id=job.id,
+        name="Python",
+        category="technical",
+        mandatory=False,
+        extraction_confidence=0.80,
+    )
+
+    mandatory = JobRequirement(
+        id="req-2",
+        job_id=job.id,
+        name="Python",
+        category="technical",
+        mandatory=True,
+        extraction_confidence=0.95,
+    )
+
+    repository.save(optional)
+    repository.save(mandatory)
+
+    result = repository.get_by_job_id(job.id)
+
+    assert len(result) == 1
+    assert result[0].mandatory is True
+    assert result[0].extraction_confidence == 0.95
+
+def test_save_different_requirements_for_same_job_are_persisted_separately(
+    repository,
+    job,
+):
+    python_requirement = JobRequirement(
+        id="req-python",
+        job_id=job.id,
+        name="Python",
+        category="technical",
+        mandatory=True,
+        extraction_confidence=0.95,
+    )
+
+    typescript_requirement = JobRequirement(
+        id="req-typescript",
+        job_id=job.id,
+        name="TypeScript",
+        category="technical",
+        mandatory=False,
+        extraction_confidence=0.90,
+    )
+
+    repository.save(python_requirement)
+    repository.save(typescript_requirement)
+
+    result = repository.get_by_job_id(job.id)
+
+    assert len(result) == 2
+
+    names = {requirement.name for requirement in result}
+
+    assert names == {"Python", "TypeScript"}

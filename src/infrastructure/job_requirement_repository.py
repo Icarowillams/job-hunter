@@ -8,31 +8,102 @@ class JobRequirementRepository:
 
     def save(self, requirement: JobRequirement) -> None:
         with self.database.connect() as conn:
-            conn.execute(
+            existing_by_id = conn.execute(
                 """
-                INSERT INTO job_requirement (
+                SELECT
+                    id
+                FROM job_requirement
+                WHERE id = ?
+                LIMIT 1
+                """,
+                (requirement.id,),
+            ).fetchone()
+
+            if existing_by_id is not None:
+                conn.execute(
+                    """
+                    UPDATE job_requirement
+                    SET
+                        job_id = ?,
+                        name = ?,
+                        category = ?,
+                        mandatory = ?,
+                        extraction_confidence = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        requirement.job_id,
+                        requirement.name,
+                        requirement.category,
+                        int(requirement.mandatory),
+                        requirement.extraction_confidence,
+                        requirement.id,
+                    ),
+                )
+                return
+
+            existing_logical = conn.execute(
+                """
+                SELECT
                     id,
-                    job_id,
-                    name,
-                    category,
                     mandatory,
                     extraction_confidence
-                )
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON CONFLICT(id) DO UPDATE SET
-                    job_id = excluded.job_id,
-                    name = excluded.name,
-                    category = excluded.category,
-                    mandatory = excluded.mandatory,
-                    extraction_confidence = excluded.extraction_confidence
+                FROM job_requirement
+                WHERE job_id = ?
+                  AND LOWER(name) = LOWER(?)
+                  AND category = ?
+                LIMIT 1
                 """,
                 (
-                    requirement.id,
                     requirement.job_id,
                     requirement.name,
                     requirement.category,
-                    int(requirement.mandatory),
-                    requirement.extraction_confidence,
+                ),
+            ).fetchone()
+
+            if existing_logical is None:
+                conn.execute(
+                    """
+                    INSERT INTO job_requirement (
+                        id,
+                        job_id,
+                        name,
+                        category,
+                        mandatory,
+                        extraction_confidence
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        requirement.id,
+                        requirement.job_id,
+                        requirement.name,
+                        requirement.category,
+                        int(requirement.mandatory),
+                        requirement.extraction_confidence,
+                    ),
+                )
+                return
+
+            existing_id = existing_logical[0]
+            existing_mandatory = bool(existing_logical[1])
+            existing_confidence = existing_logical[2] or 0.0
+
+            conn.execute(
+                """
+                UPDATE job_requirement
+                SET
+                    mandatory = ?,
+                    extraction_confidence = ?
+                WHERE id = ?
+                """,
+                (
+                    int(existing_mandatory or requirement.mandatory),
+                    max(
+                        existing_confidence,
+                        requirement.extraction_confidence,
+                    ),
+                    existing_id,
                 ),
             )
 

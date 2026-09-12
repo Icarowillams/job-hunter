@@ -197,3 +197,88 @@ def test_collects_structured_job_from_google_search_jobs_results():
     assert job.metadata["collector"] == "google_search"
     assert job.metadata["via"] == "LinkedIn"
     assert job.metadata["schedule_type"] == "Full-time"
+def test_rejects_obvious_job_search_listing_pages():
+    response = FakeResponse(
+        {
+            "organic_results": [
+                {
+                    "title": "Vagas de Python no LinkedIn",
+                    "link": "https://www.linkedin.com/jobs/search/?keywords=python",
+                    "snippet": "Encontre vagas de Python no LinkedIn.",
+                    "source": "LinkedIn",
+                },
+                {
+                    "title": "Vagas de Python no Glassdoor",
+                    "link": "https://www.glassdoor.com.br/Vaga/python-vagas-SRCH_KO0,6.htm",
+                    "snippet": "Confira vagas de Python.",
+                    "source": "Glassdoor",
+                },
+                {
+                    "title": "Vagas de Python no Indeed",
+                    "link": "https://br.indeed.com/q-python-vagas.html",
+                    "snippet": "Pesquise oportunidades de Python.",
+                    "source": "Indeed",
+                },
+                {
+                    "title": "Estágio Backend Python",
+                    "link": "https://empresa.example/jobs/estagio-backend-python",
+                    "snippet": "Estágio individual para desenvolvimento backend com Python.",
+                    "source": "Empresa Exemplo",
+                },
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiGoogleSearchCollector(
+        api_key="test-key",
+        query="estágio python",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "Estágio Backend Python"
+    assert jobs[0].company == "Empresa Exemplo"
+
+
+def test_rejects_obvious_non_job_content_from_organic_results():
+    response = FakeResponse(
+        {
+            "organic_results": [
+                {
+                    "title": "Discussão sobre Python",
+                    "link": "https://www.reddit.com/r/programacao/comments/abc123/python/",
+                    "snippet": "Discussão da comunidade sobre Python.",
+                    "source": "Reddit",
+                },
+                {
+                    "title": "Como aprender Python do zero",
+                    "link": "https://blog.example.com/como-aprender-python",
+                    "snippet": "Tutorial completo para aprender Python.",
+                    "source": "Blog Exemplo",
+                },
+                {
+                    "title": "VAGA Backend Python - Estágio",
+                    "link": "https://empresa.example/vagas/backend-python-estagio",
+                    "snippet": "Estamos contratando estagiário para atuar com Python.",
+                    "source": "Empresa Exemplo",
+                },
+            ]
+        }
+    )
+
+    client = FakeHttpClient(response)
+
+    collector = SerpApiGoogleSearchCollector(
+        api_key="test-key",
+        query="estágio python",
+        http_client=client,
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "VAGA Backend Python - Estágio"
