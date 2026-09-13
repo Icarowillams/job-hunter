@@ -1,4 +1,4 @@
-﻿import os
+import os
 from pathlib import Path
 
 import yaml
@@ -73,25 +73,12 @@ def _build_serpapi_collector(config: dict):
     if not api_key:
         return NullJobCollector()
 
-    primary = SerpApiJobCollector(
+    return SerpApiJobCollector(
         api_key=api_key,
         query=query,
         location=location,
         limit=limit,
     )
-
-    fallback = SerpApiGoogleSearchCollector(
-        api_key=api_key,
-        query=query,
-        location=location,
-        limit=limit,
-    )
-
-    return FallbackJobCollector(
-        primary=primary,
-        fallback=fallback,
-    )
-
 
 def _build_email_notifier(
     config: dict,

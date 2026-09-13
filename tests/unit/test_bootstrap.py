@@ -1,12 +1,7 @@
-from pathlib import Path
-
-import pytest
-
+from src.infrastructure.email_notifier import EmailNotifier
 from src.application.bootstrap import build_application
 from src.application.orchestrator import ApplicationRunner
-from src.ingestion.collectors.fallback_job_collector import FallbackJobCollector
 from src.ingestion.collectors.serpapi_job_collector import SerpApiJobCollector
-from src.ingestion.collectors.serpapi_google_search_collector import SerpApiGoogleSearchCollector
 
 def test_build_application_returns_application_runner(tmp_path):
     config_path = tmp_path / "config.yaml"
@@ -180,9 +175,9 @@ serpapi:
         db_path=tmp_path / "job_hunter.db",
     )
 
-    assert isinstance(runner.collector, FallbackJobCollector)
+    assert isinstance(runner.collector, SerpApiJobCollector)
 
-    primary = runner.collector.primary
+    primary = runner.collector
 
     assert isinstance(primary, SerpApiJobCollector)
     assert primary.api_key == "test-serpapi-key"
@@ -279,9 +274,8 @@ serpapi:
         db_path=tmp_path / "job_hunter.db",
     )
 
-    assert isinstance(runner.collector, FallbackJobCollector)
-    assert isinstance(runner.collector.primary, SerpApiJobCollector)
-    assert runner.collector.primary.api_key == "dotenv-test-key"
+    assert isinstance(runner.collector, SerpApiJobCollector)
+    assert runner.collector.api_key == "dotenv-test-key"
 
 
 def test_build_application_injects_job_analysis_repository(
@@ -324,111 +318,6 @@ serpapi:
     assert runner.pipeline.analysis_repository.database is runner.job_repository.database
 
 
-def test_build_application_composes_serpapi_fallback_collectors(
-    tmp_path,
-    monkeypatch,
-):
-    config_path = tmp_path / "config.yaml"
-    profile_path = tmp_path / "profile.json"
-
-    config_path.write_text(
-        """
-paths:
-  profile: "profile.json"
-  db: "job_hunter.db"
-
-notification:
-  enabled: false
-
-serpapi:
-  api_key: "${SERPAPI_API_KEY}"
-  query_params:
-    location: "Recife,State of Pernambuco,Brazil"
-    query: "estágio python"
-    limit: 10
-""",
-        encoding="utf-8",
-    )
-
-    profile_path.write_text(
-        '{"id": "test-profile", "skills": ["Python"]}',
-        encoding="utf-8",
-    )
-
-    monkeypatch.setenv("SERPAPI_API_KEY", "test-serpapi-key")
-
-    runner = build_application(
-        config_path=config_path,
-        profile_path=profile_path,
-        db_path=tmp_path / "job_hunter.db",
-    )
-
-    assert isinstance(runner.collector, FallbackJobCollector)
-    assert isinstance(runner.collector.primary, SerpApiJobCollector)
-    assert isinstance(
-        runner.collector.fallback,
-        SerpApiGoogleSearchCollector,
-    )
-
-
-def test_fallback_collector_preserves_same_search_configuration(
-    tmp_path,
-    monkeypatch,
-):
-    config_path = tmp_path / "config.yaml"
-    profile_path = tmp_path / "profile.json"
-
-    config_path.write_text(
-        """
-paths:
-  profile: "profile.json"
-  db: "job_hunter.db"
-
-notification:
-  enabled: false
-
-serpapi:
-  api_key: "${SERPAPI_API_KEY}"
-  query_params:
-    location: "Recife,State of Pernambuco,Brazil"
-    query: "estágio python"
-    limit: 15
-""",
-        encoding="utf-8",
-    )
-
-    profile_path.write_text(
-        '{"id": "test-profile"}',
-        encoding="utf-8",
-    )
-
-    monkeypatch.setenv("SERPAPI_API_KEY", "test-serpapi-key")
-
-    runner = build_application(
-        config_path=config_path,
-        profile_path=profile_path,
-        db_path=tmp_path / "job_hunter.db",
-    )
-
-    collector = runner.collector
-
-    assert collector.primary.api_key == "test-serpapi-key"
-    assert collector.primary.query == "estágio python"
-    assert collector.primary.location == (
-        "Recife,State of Pernambuco,Brazil"
-    )
-    assert collector.primary.limit == 15
-
-    assert collector.fallback.api_key == "test-serpapi-key"
-    assert collector.fallback.query == "estágio python"
-    assert collector.fallback.location == (
-        "Recife,State of Pernambuco,Brazil"
-    )
-    assert collector.fallback.limit == 15
-from pathlib import Path
-
-from src.application.bootstrap import build_application
-from src.infrastructure.email_notifier import EmailNotifier
 
 
 def test_build_application_creates_email_notifier_from_config(tmp_path, monkeypatch):

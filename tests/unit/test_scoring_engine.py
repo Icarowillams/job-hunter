@@ -1,4 +1,4 @@
-from src.domain.enums import MatchStatus
+﻿from src.domain.enums import MatchStatus
 from src.scoring.scoring_engine import ScoringEngine
 
 
@@ -40,7 +40,7 @@ def test_missing_mandatory_requirement_creates_hard_blocker():
     assert result["hard_blocker"] is True
 
 
-def test_unknown_requirement_reduces_confidence_not_compatibility():
+def test_unknown_requirement_reduces_compatibility_and_confidence():
     matches = {
         "Python": MatchStatus.MATCHED,
         "AWS": MatchStatus.UNKNOWN,
