@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -635,3 +635,158 @@ def test_normalized_hash_includes_location():
     )
 
     assert jobs[0].normalized_hash == expected
+
+def test_apply_link_has_priority_over_share_link():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": "priority-123",
+                    "title": "Backend Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento backend.",
+                    "share_link": "https://example.com/share-link",
+                    "apply_options": [
+                        {
+                            "link": "https://example.com/apply-link"
+                        }
+                    ],
+                }
+            ]
+        }
+    )
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="backend developer",
+        http_client=FakeHttpClient(response),
+    )
+
+    jobs = collector.fetch_jobs()
+
+    assert len(jobs) == 1
+    assert jobs[0].url == "https://example.com/apply-link"
+
+
+def test_parses_portuguese_relative_published_at_days():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": "pt-days-123",
+                    "title": "Backend Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento backend.",
+                    "detected_extensions": {
+                        "posted_at": "h? 2 dias",
+                    },
+                }
+            ]
+        }
+    )
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="backend developer",
+        http_client=FakeHttpClient(response),
+    )
+
+    job = collector.fetch_jobs()[0]
+
+    assert job.published_at is not None
+    assert job.original_published_at == job.published_at
+    assert timedelta(days=1, hours=23) <= (job.discovered_at - job.published_at) <= timedelta(days=2, hours=1)
+    assert job.published_at.tzinfo is not None
+
+
+def test_parses_portuguese_relative_published_at_hours():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": "pt-hours-123",
+                    "title": "Backend Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento backend.",
+                    "detected_extensions": {
+                        "posted_at": "h? 3 horas",
+                    },
+                }
+            ]
+        }
+    )
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="backend developer",
+        http_client=FakeHttpClient(response),
+    )
+
+    job = collector.fetch_jobs()[0]
+
+    assert job.published_at is not None
+    assert job.original_published_at == job.published_at
+    assert timedelta(hours=2, minutes=59) <= (job.discovered_at - job.published_at) <= timedelta(hours=3, minutes=1)
+    assert job.published_at.tzinfo is not None
+
+
+def test_parses_portuguese_relative_published_at_now():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": "pt-now-123",
+                    "title": "Backend Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Desenvolvimento backend.",
+                    "detected_extensions": {
+                        "posted_at": "agora",
+                    },
+                }
+            ]
+        }
+    )
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="backend developer",
+        http_client=FakeHttpClient(response),
+    )
+
+    job = collector.fetch_jobs()[0]
+
+    assert job.published_at is not None
+    assert job.original_published_at == job.published_at
+    assert job.discovered_at - job.published_at <= timedelta(minutes=1)
+    assert job.published_at.tzinfo is not None
+
+
+def test_still_parses_english_relative_published_at():
+    response = FakeResponse(
+        {
+            "jobs_results": [
+                {
+                    "job_id": "en-days-123",
+                    "title": "Backend Developer",
+                    "company_name": "Empresa Exemplo",
+                    "description": "Backend development.",
+                    "detected_extensions": {
+                        "posted_at": "2 days ago",
+                    },
+                }
+            ]
+        }
+    )
+
+    collector = SerpApiJobCollector(
+        api_key="test-key",
+        query="backend developer",
+        http_client=FakeHttpClient(response),
+    )
+
+    job = collector.fetch_jobs()[0]
+
+    assert job.published_at is not None
+    assert job.original_published_at == job.published_at
+    assert timedelta(days=1, hours=23) <= (job.discovered_at - job.published_at) <= timedelta(days=2, hours=1)
+    assert job.published_at.tzinfo is not None

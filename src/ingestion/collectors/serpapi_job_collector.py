@@ -208,6 +208,18 @@ class SerpApiJobCollector(JobCollector):
 
     @staticmethod
     def _extract_url(result: dict[str, Any]) -> str | None:
+        apply_options = result.get("apply_options")
+
+        if isinstance(apply_options, list):
+            for option in apply_options:
+                if not isinstance(option, dict):
+                    continue
+
+                url = option.get("link")
+
+                if isinstance(url, str) and url.strip():
+                    return url.strip()
+
         share_link = result.get("share_link")
 
         if isinstance(share_link, str) and share_link.strip():
@@ -226,6 +238,7 @@ class SerpApiJobCollector(JobCollector):
                     return url.strip()
 
         return None
+
 
     @staticmethod
     def _extract_location(result: dict[str, Any]) -> str | None:
@@ -322,16 +335,67 @@ class SerpApiJobCollector(JobCollector):
         value = posted_at.strip().lower()
         now = datetime.now(timezone.utc)
 
-        if value in {"just now", "moments ago"}:
+        if value in {
+            "just now",
+            "moments ago",
+            "now",
+            "agora",
+            "agora mesmo",
+        }:
             return now
 
-        if value == "today":
+        if value in {"today", "hoje"}:
             return now.replace(
                 hour=0,
                 minute=0,
                 second=0,
                 microsecond=0,
             )
+
+        parts = value.split()
+
+        if len(parts) == 3 and parts[0] == "h?" and parts[2] in {
+            "minuto",
+            "minutos",
+            "hora",
+            "horas",
+            "dia",
+            "dias",
+            "semana",
+            "semanas",
+            "m?s",
+            "meses",
+            "ano",
+            "anos",
+        }:
+            amount_text = parts[1]
+            unit = parts[2]
+
+            try:
+                amount = int(amount_text)
+            except ValueError:
+                return None
+
+            if amount < 0:
+                return None
+
+            if unit in {"minuto", "minutos"}:
+                return now - timedelta(minutes=amount)
+
+            if unit in {"hora", "horas"}:
+                return now - timedelta(hours=amount)
+
+            if unit in {"dia", "dias"}:
+                return now - timedelta(days=amount)
+
+            if unit in {"semana", "semanas"}:
+                return now - timedelta(weeks=amount)
+
+            if unit in {"m?s", "meses"}:
+                return now - timedelta(days=amount * 30)
+
+            if unit in {"ano", "anos"}:
+                return now - timedelta(days=amount * 365)
 
         parts = value.split()
 
@@ -367,6 +431,7 @@ class SerpApiJobCollector(JobCollector):
             return now - timedelta(days=amount * 365)
 
         return None
+
 
     @staticmethod
     def _generate_job_id(
