@@ -18,8 +18,8 @@ source: serpapi
 serpapi:
   api_key: ${SERPAPI_API_KEY}
   query_params:
-    location: "Sao Paulo"
-    query: "estágio desenvolvimento python"
+    location: "Brazil"
+    query: "desenvolvedor backend junior OR backend developer junior OR desenvolvedor full stack junior OR full stack developer junior OR node.js developer junior OR typescript developer junior"
     limit: 20
 
 notification:
