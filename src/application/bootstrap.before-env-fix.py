@@ -42,7 +42,7 @@ def _load_config(config_path: Path) -> dict:
         )
 
     env_path = config_path.parent / ".env"
-    load_dotenv(dotenv_path=env_path, override=True)
+    load_dotenv(dotenv_path=env_path)
 
     with config_path.open("r", encoding="utf-8") as file:
         return yaml.safe_load(file) or {}
