@@ -14,6 +14,7 @@ from src.infrastructure.email_notifier import EmailNotifier
 from src.infrastructure.job_analysis_repository import JobAnalysisRepository
 from src.infrastructure.job_repository import JobRepository
 from src.infrastructure.job_requirement_repository import JobRequirementRepository
+from src.infrastructure.knowledge_repository import KnowledgeRepository
 from src.infrastructure.metric_repository import MetricRepository
 from src.infrastructure.pipeline_execution_repository import (
     PipelineExecutionRepository,
@@ -29,6 +30,8 @@ from src.infrastructure.smtp_client import SMTPClient
 from src.infrastructure.notification_repository import NotificationRepository
 from src.application.retry.retry_policy import RetryPolicy
 from src.ingestion.collectors.multi_query_collector import MultiQueryCollector
+from src.knowledge.chunker import KnowledgeChunker
+from src.knowledge.document_builder import CandidateKnowledgeDocumentBuilder
 
 
 class NullJobCollector:
@@ -202,6 +205,20 @@ def build_application(
 
     profile_repository = CandidateProfileRepository(database)
     profile_repository.save(profile)
+
+    knowledge_repository = KnowledgeRepository(database)
+    knowledge_builder = CandidateKnowledgeDocumentBuilder()
+    knowledge_chunker = KnowledgeChunker()
+    knowledge_documents = knowledge_builder.build(profile)
+    knowledge_repository.sync(
+        profile.id,
+        knowledge_documents,
+        [
+            chunk
+            for document in knowledge_documents
+            for chunk in knowledge_chunker.chunk(document)
+        ],
+    )
 
     job_repository = JobRepository(database)
     requirement_repository = JobRequirementRepository(database)

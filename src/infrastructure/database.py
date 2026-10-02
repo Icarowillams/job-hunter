@@ -164,6 +164,33 @@ class Database:
                         ON DELETE SET NULL
                 );
 
+                CREATE TABLE IF NOT EXISTS knowledge_document (
+                    id TEXT PRIMARY KEY,
+                    candidate_id TEXT NOT NULL,
+                    source_type TEXT,
+                    source_ref TEXT,
+                    content TEXT,
+                    metadata TEXT,
+                    source_hash TEXT NOT NULL,
+                    profile_version TEXT NOT NULL,
+                    document_schema_version TEXT NOT NULL,
+                    FOREIGN KEY (candidate_id)
+                        REFERENCES candidate_profile(id)
+                        ON DELETE CASCADE
+                );
+
+                CREATE TABLE IF NOT EXISTS knowledge_chunk (
+                    id TEXT PRIMARY KEY,
+                    document_id TEXT NOT NULL,
+                    position INTEGER NOT NULL,
+                    text TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    metadata TEXT,
+                    FOREIGN KEY (document_id)
+                        REFERENCES knowledge_document(id)
+                        ON DELETE CASCADE
+                );
+
                 CREATE INDEX IF NOT EXISTS idx_job_url
                     ON job(url);
 
@@ -199,5 +226,14 @@ class Database:
 
                 CREATE INDEX IF NOT EXISTS idx_metric_execution_id
                     ON metric(execution_id);
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_document_candidate_id
+                    ON knowledge_document(candidate_id);
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_document_source_type
+                    ON knowledge_document(source_type);
+
+                CREATE INDEX IF NOT EXISTS idx_knowledge_chunk_document_id
+                    ON knowledge_chunk(document_id);
                 """
             )
