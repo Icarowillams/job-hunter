@@ -1,4 +1,5 @@
-﻿import smtplib
+import smtplib
+import ssl
 from email.message import EmailMessage
 
 
@@ -25,6 +26,6 @@ class SMTPClient:
             self.port,
             timeout=self.timeout,
         ) as smtp:
-            smtp.starttls()
+            smtp.starttls(context=ssl.create_default_context())
             smtp.login(self.username, self.password)
             smtp.send_message(message)

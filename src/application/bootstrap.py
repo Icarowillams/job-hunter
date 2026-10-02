@@ -28,6 +28,7 @@ from src.pipeline.analysis_pipeline import AnalysisPipeline
 from src.infrastructure.smtp_client import SMTPClient
 from src.infrastructure.notification_repository import NotificationRepository
 from src.application.retry.retry_policy import RetryPolicy
+from src.ingestion.collectors.multi_query_collector import MultiQueryCollector
 
 
 class NullJobCollector:
@@ -42,7 +43,7 @@ def _load_config(config_path: Path) -> dict:
         )
 
     env_path = config_path.parent / ".env"
-    load_dotenv(dotenv_path=env_path, override=True)
+    load_dotenv(dotenv_path=env_path, override=False)
 
     with config_path.open("r", encoding="utf-8") as file:
         return yaml.safe_load(file) or {}
@@ -70,8 +71,24 @@ def _build_serpapi_collector(config: dict):
     location = query_params.get("location")
     limit = int(query_params.get("limit", 20))
 
-    if not api_key:
+    if not api_key or api_key.startswith("your_"):
+        if config.get("strict_config", False):
+            raise ValueError("Configure SERPAPI_API_KEY no arquivo .env; chave ausente.")
         return NullJobCollector()
+
+    searches = serpapi_config.get("searches", [])
+    if searches:
+        if len(searches) > 6:
+            raise ValueError("No maximo 6 consultas por rodada para limitar consumo.")
+        return MultiQueryCollector([
+            SerpApiJobCollector(
+                api_key=api_key,
+                query=search["query"],
+                location=search.get("location"),
+                limit=min(int(search.get("limit", 10)), 20),
+                gl=search.get("gl"), hl=search.get("hl"),
+            ) for search in searches
+        ])
 
     return SerpApiJobCollector(
         api_key=api_key,
@@ -105,6 +122,10 @@ def _build_email_notifier(
     recipient = _resolve_env_value(
         email_config.get("to", username)
     )
+
+    if config.get("strict_config", False):
+        if not all((smtp_server, username, password, sender, recipient)):
+            raise ValueError("E-mail habilitado, mas configuracao SMTP incompleta no .env.")
 
     smtp_client = SMTPClient(
         host=smtp_server,
@@ -145,10 +166,13 @@ def build_application(
     db_path: str | Path | None = None,
     collector=None,
     notifier=None,
+    notifications_enabled: bool | None = None,
 ) -> ApplicationRunner:
     config_path = Path(config_path)
 
     config = _load_config(config_path)
+    if notifications_enabled is not None:
+        config["notification"] = {**config.get("notification", {}), "enabled": notifications_enabled}
 
     paths_config = config.get("paths", {})
     notification_config = config.get("notification", {})
@@ -165,6 +189,11 @@ def build_application(
         if db_path is not None
         else paths_config.get("db", "data/job_hunter.db")
     )
+
+    if not resolved_profile_path.is_absolute():
+        resolved_profile_path = config_path.resolve().parent / resolved_profile_path
+    if not resolved_db_path.is_absolute():
+        resolved_db_path = config_path.resolve().parent / resolved_db_path
 
     database = Database(db_path=str(resolved_db_path))
 

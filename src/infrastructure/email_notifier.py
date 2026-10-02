@@ -1,12 +1,13 @@
-﻿from email.message import EmailMessage
+from email.message import EmailMessage
 from datetime import datetime, timezone
-from uuid import uuid4
 
 from src.application.notification.notifier import Notifier
 from src.application.retry.retry_policy import RetryExhaustedError, RetryPolicy
-from src.domain.enums import NotificationChannel
+from src.domain.enums import NotificationChannel, NotificationStatus
 from src.domain.models import Job, JobAnalysis
 from src.domain.notification import Notification
+from uuid import uuid4
+from src.safe_errors import safe_error
 
 
 class EmailNotifier(Notifier):
@@ -26,7 +27,7 @@ class EmailNotifier(Notifier):
         self.retry_policy = retry_policy
         self.notification_repository = notification_repository
 
-    def send_notification(self, analysis: JobAnalysis, job: Job) -> None:
+    def send_notification(self, analysis: JobAnalysis, job: Job) -> bool:
         message = EmailMessage()
         message["From"] = self.sender
         message["To"] = self.recipient
@@ -35,25 +36,43 @@ class EmailNotifier(Notifier):
 
         if self.notification_repository is None:
             self._send(message)
-            return
+            return True
 
-        notification = Notification(
-            id=str(uuid4()),
-            job_id=job.id,
-            title=job.title,
-            message=message.get_body().get_content(),
-            score=analysis.compatibility_score,
-            classification=analysis.classification,
-            channel=NotificationChannel.EMAIL,
-            created_at=datetime.now(timezone.utc),
-        )
+        existing = None
+        if hasattr(self.notification_repository, "get_by_job_and_channel"):
+            existing = self.notification_repository.get_by_job_and_channel(
+                job.id, NotificationChannel.EMAIL
+            )
+
+        if existing is not None and existing.status == NotificationStatus.SENT:
+            # Already sent successfully -> deduplicate and skip SMTP
+            return False
+
+        if existing is not None:
+            notification = existing
+            notification.title = job.title
+            notification.message = message.get_body().get_content()
+            notification.score = analysis.compatibility_score
+            notification.classification = analysis.classification or "REVIEW"
+        else:
+            notification = Notification(
+                id=str(uuid4()),
+                job_id=job.id,
+                title=job.title,
+                message=message.get_body().get_content(),
+                score=analysis.compatibility_score,
+                classification=analysis.classification or "REVIEW",
+                channel=NotificationChannel.EMAIL,
+                status=NotificationStatus.PENDING,
+                created_at=datetime.now(timezone.utc),
+            )
 
         self.notification_repository.save(notification)
 
         try:
             if self.retry_policy is None:
                 self.smtp_client.send_message(message)
-                attempts = 1
+                attempts = max(1, notification.attempts + 1)
             else:
                 retry_policy = RetryPolicy(
                     max_attempts=self.retry_policy.max_attempts,
@@ -77,10 +96,10 @@ class EmailNotifier(Notifier):
 
             if isinstance(exc, RetryExhaustedError):
                 attempts = exc.attempts
-                error = str(exc.original_exception)
+                error = safe_error(exc.original_exception)
             else:
-                attempts = 1
-                error = str(exc)
+                attempts = max(1, notification.attempts + 1)
+                error = safe_error(exc)
 
             notification.mark_failed(
                 failed_at=failed_at,
@@ -100,6 +119,7 @@ class EmailNotifier(Notifier):
         )
 
         self.notification_repository.save(notification)
+        return True
 
     def _persist_retry(
         self,
@@ -109,7 +129,7 @@ class EmailNotifier(Notifier):
     ) -> None:
         notification.mark_retrying(
             attempted_at=datetime.now(timezone.utc),
-            error=str(error),
+            error=safe_error(error),
         )
         notification.attempts = attempt
 

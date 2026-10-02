@@ -42,3 +42,16 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
+
+# Personal runtime/private data
+.env
+data/
+reports/
+logs/
+*.db
+*.sqlite
+*.sqlite3
+*.db-wal
+*.db-shm
+*.lock
+coverage-review.json

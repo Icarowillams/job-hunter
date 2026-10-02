@@ -1,4 +1,4 @@
-﻿from email.message import EmailMessage
+from email.message import EmailMessage
 
 import pytest
 
@@ -9,7 +9,10 @@ class FakeSMTPConnection:
     def __init__(self):
         self.calls = []
 
-    def starttls(self):
+    def starttls(self, context=None):
+        import ssl
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname
         self.calls.append(("starttls",))
 
     def login(self, username, password):

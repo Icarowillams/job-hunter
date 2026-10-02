@@ -5,10 +5,10 @@ from src.infrastructure.profile_loader import ProfileLoader
 def test_load_candidate_profile():
     loader = ProfileLoader()
 
-    profile = loader.load("data/profile.json")
+    profile = loader.load("tests/fixtures/profile.json")
 
     assert isinstance(profile, CandidateProfile)
-    assert profile.id == "icaro-willams"
+    assert profile.id == "sample-candidate"
 
     assert "node.js" in profile.skills
     assert "typescript" in profile.skills
@@ -24,7 +24,7 @@ def test_load_candidate_profile():
 def test_profile_file_is_utf8():
     loader = ProfileLoader()
 
-    profile = loader.load("data/profile.json")
+    profile = loader.load("tests/fixtures/profile.json")
 
     assert profile.location == "Olinda - PE"
     assert profile.languages[0]["language"] == "Inglês"

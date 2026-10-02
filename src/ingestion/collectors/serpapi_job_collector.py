@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta, timezone
 import hashlib
+import math
+from src.safe_errors import safe_error
 from typing import Any
 
 import requests
@@ -28,6 +30,8 @@ class SerpApiJobCollector(JobCollector):
         limit: int = 20,
         timeout: int = 10,
         http_client: Any | None = None,
+        gl: str | None = None,
+        hl: str | None = None,
     ):
         if not api_key or not api_key.strip():
             raise ValueError("api_key must not be empty")
@@ -47,18 +51,26 @@ class SerpApiJobCollector(JobCollector):
         self.limit = limit
         self.timeout = timeout
         self.http_client = http_client or requests
+        self.gl, self.hl = gl, hl
 
     def fetch_jobs(self) -> list[Job]:
         jobs: list[Job] = []
         next_page_token = None
+        pages = 0
+        seen_tokens = set()
 
-        while len(jobs) < self.limit:
+        while len(jobs) < self.limit and pages < math.ceil(self.limit / self.PAGE_SIZE):
+            pages += 1
             params = {
                 "api_key": self.api_key,
                 "engine": "google_jobs",
                 "q": self.query,
             }
 
+            if self.gl:
+                params["gl"] = self.gl
+            if self.hl:
+                params["hl"] = self.hl
             if self.location:
                 params["location"] = self.location
 
@@ -76,12 +88,17 @@ class SerpApiJobCollector(JobCollector):
             payload = response.json()
 
             if not isinstance(payload, dict):
+                raise RuntimeError("SerpAPI retornou resposta invalida; nao confundir com ausencia de vagas.")
+
+            if payload.get("error") == "Google hasn't returned any results for this query.":
                 break
+            if payload.get("error"):
+                raise RuntimeError("SerpAPI: " + safe_error(payload["error"]))
 
             results = payload.get("jobs_results", [])
 
             if not isinstance(results, list):
-                break
+                raise RuntimeError("SerpAPI retornou lista de vagas invalida.")
 
             remaining = self.limit - len(jobs)
 
@@ -104,8 +121,9 @@ class SerpApiJobCollector(JobCollector):
 
             next_page_token = pagination.get("next_page_token")
 
-            if not next_page_token:
+            if not next_page_token or next_page_token in seen_tokens:
                 break
+            seen_tokens.add(next_page_token)
 
         return jobs
 

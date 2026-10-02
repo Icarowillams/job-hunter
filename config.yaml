@@ -1,37 +1,50 @@
-﻿scoring:
-  weights:
-    role_fit: 0.20
-    seniority_fit: 0.15
-    technical_fit: 0.40
-    experience_fit: 0.15
-    semantic_fit: 0.10
+﻿strict_config: true
 
-thresholds:
-  priority_comp: 80
-  priority_fresh: 70
-  review_comp: 60
-  review_fresh: 50
-
-mode: lightweight
 source: serpapi
 
 serpapi:
   api_key: ${SERPAPI_API_KEY}
-  query_params:
-    location: "Brazil"
-    query: "desenvolvedor backend junior OR backend developer junior OR desenvolvedor full stack junior OR full stack developer junior OR node.js developer junior OR typescript developer junior"
-    limit: 20
+  searches:
+    - query: "desenvolvedor frontend junior"
+      location: Brazil
+      gl: br
+      hl: pt
+      limit: 10
+
+    - query: "desenvolvedor backend junior"
+      location: Brazil
+      gl: br
+      hl: pt
+      limit: 10
+
+    - query: "desenvolvedor full stack junior"
+      location: Brazil
+      gl: br
+      hl: pt
+      limit: 10
+
+    - query: "software developer junior"
+      location: United States
+      gl: us
+      hl: en
+      limit: 10
+
+    - query: "software developer junior"
+      location: Portugal
+      gl: pt
+      hl: pt
+      limit: 10
+
+    - query: "desenvolvedor de software"
+      location: "Recife, State of Pernambuco, Brazil"
+      gl: br
+      hl: pt
+      limit: 10
 
 notification:
   enabled: true
   minimum_score: 70
   channel: email
-  retry:
-    enabled: true
-    max_attempts: 3
-    delay_seconds: 2
-    backoff_multiplier: 2
-    workers: 2
 
 email:
   smtp_server: ${EMAIL_SMTP_SERVER}
@@ -41,34 +54,9 @@ email:
   from: ${EMAIL_FROM}
   to: ${EMAIL_TO}
 
-telegram:
-  enabled: true
-  bot_token: ${TELEGRAM_BOT_TOKEN}
-  chat_id: ${TELEGRAM_CHAT_ID}
-  timeout: 10
-
-embedding:
-  model: "paraphrase-multilingual-MiniLM-L12-v2"
-
 paths:
-  profile: "data/profile.json"
-  skill_dictionary: "data/skill_dictionary.json"
-  db: "data/job_hunter.db"
-  logs: "logs"
-
-logging:
-  level: "INFO"
-  format: "json"
-
-scheduler:
-  enabled: true
-  check_interval_seconds: 30
-  execution_timeout_seconds: 300
-  graceful_shutdown_timeout_seconds: 30
-
-shutdown:
-  enabled: true
-  timeout_seconds: 30
+  profile: data/profile.json
+  db: data/job_hunter.db
 
 metrics:
   enabled: true

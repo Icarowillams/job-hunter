@@ -1,0 +1,28 @@
+{
+  "id": "sample-candidate",
+  "target_roles": [
+    "Desenvolvedor Backend Júnior"
+  ],
+  "location": "Olinda - PE",
+  "skills": [
+    "node.js",
+    "typescript",
+    "deno"
+  ],
+  "experiences": [
+    {
+      "role": "Exemplo"
+    }
+  ],
+  "educations": [
+    {
+      "course": "Exemplo"
+    }
+  ],
+  "languages": [
+    {
+      "language": "Inglês",
+      "level": "B1"
+    }
+  ]
+}

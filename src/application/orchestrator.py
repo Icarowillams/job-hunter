@@ -1,4 +1,5 @@
-﻿from dataclasses import dataclass, field
+from src.safe_errors import safe_error
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
@@ -150,7 +151,7 @@ class ApplicationRunner:
             return run_result
 
         except Exception as exc:
-            error_message = str(exc)
+            error_message = safe_error(exc)
 
             self._save_execution(
                 PipelineExecution(
@@ -214,15 +215,15 @@ class ApplicationRunner:
                 and not analysis.hard_blocker
             ):
                 try:
-                    self.notifier.send_notification(
+                    delivered = self.notifier.send_notification(
                         analysis,
                         job,
                     )
-                    result.notified = True
+                    result.notified = delivered is not False
                 except Exception as exc:
-                    result.notification_error = str(exc)
+                    result.notification_error = safe_error(exc)
 
         except Exception as exc:
-            result.error = str(exc)
+            result.error = safe_error(exc)
 
         return result
